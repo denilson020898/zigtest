@@ -853,3 +853,120 @@ test "inline while loop" {
 fn typeNameLength(comptime T: type) usize {
     return @typeName(T).len;
 }
+
+test "for basics" {
+    const items = [_]i32{ 4, 5, 3, 4, 0 };
+    var sum: i32 = 0;
+
+    for (items) |value| {
+        if (value == 0) {
+            continue;
+        }
+        sum += value;
+    }
+
+    try expect(sum == 16);
+
+    for (items[0..1]) |value| {
+        sum += value;
+    }
+    try expect(sum == 20);
+
+    var sum2: i32 = 0;
+    // 0 + 1 + 2 + 3 + 4
+    for (items, 0..) |_, i| {
+        try expect(@TypeOf(i) == usize);
+        sum2 += @as(i32, @intCast(i));
+    }
+    try expect(sum2 == 10);
+
+    var sum3: usize = 0;
+    for (0..5) |i| {
+        sum3 += i;
+    }
+    try expect(sum3 == 10);
+}
+
+test "multi object for" {
+    const items = [_]usize{ 1, 2, 3 };
+    const items2 = [_]usize{ 4, 5, 6 };
+    var count: usize = 0;
+
+    for (items, items2) |i, j| {
+        count += i + j;
+    }
+    // 5 + 7 + 9  = 21
+    try expect(count == 21);
+}
+
+test "for reference" {
+    var items = [_]i32{ 3, 4, 2 };
+    for (&items) |*value| {
+        value.* += 1;
+    }
+    try expect(items[0] == 4);
+    try expect(items[1] == 5);
+    try expect(items[2] == 3);
+}
+
+test "for else" {
+    const items = [_]?i32{ 3, 4, null, 5 };
+    var sum: i32 = 0;
+    const result = for (items) |value| {
+        if (value != null) {
+            sum += value.?;
+        }
+    } else blk: {
+        try expect(sum == 12);
+        break :blk sum;
+    };
+    try expect(result == 12);
+}
+
+test "nested break for" {
+    var count: usize = 0;
+    outer: for (1..6) |_| {
+        for (1..6) |_| {
+            count += 1;
+            break :outer;
+        }
+    }
+    try expect(count == 1);
+}
+
+test "nested continue for" {
+    var count: usize = 0;
+    outer: for (1..9) |_| {
+        for (1..6) |_| {
+            count += 1;
+            continue :outer;
+        }
+    }
+    try expect(count == 8);
+}
+
+test "inline for loop" {
+    const nums = [_]i32{ 2, 4, 6 };
+    var sum: usize = 0;
+    inline for (nums) |i| {
+        const T = switch (i) {
+            2 => f32,
+            4 => i8,
+            6 => bool,
+            else => unreachable,
+        };
+        const typelen: usize = typeNameLength(T);
+        std.debug.print("typelen: {}\n", .{typelen});
+        sum += typelen;
+    }
+    // "f23i8bool"
+    try expect(sum == 9);
+}
+
+test "if expr" {
+    const a: u32 = 5;
+    const b: u32 = 4;
+
+    const result = if (a != b) 47 else 3333;
+    try expect(result == 47);
+}
