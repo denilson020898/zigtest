@@ -444,3 +444,51 @@ test "switch on non exhaustive enum" {
 
     try expect(is_one);
 }
+
+const Payload = union {
+    int: i64,
+    float: f64,
+    boolean: bool,
+};
+
+test "simple union" {
+    var payload = Payload{ .int = 1234 };
+    // payload.float = 12.34;
+    try expect(payload.int == 1234);
+
+    payload = Payload{ .float = 12.34 };
+    try expect(payload.float == 12.34);
+}
+
+const ComplexTypeTag = enum {
+    ok,
+    not_ok,
+};
+
+const ComplexType = union(ComplexTypeTag) {
+    ok: u8,
+    not_ok: void,
+};
+
+test "switch on tagged union" {
+    const c2 = ComplexType{ .ok = 42 };
+    try expect(@as(ComplexTypeTag, c2) == ComplexTypeTag.ok);
+
+    switch (c2) {
+        ComplexTypeTag.ok => |value| try expect(value == 42),
+        ComplexTypeTag.not_ok => unreachable,
+    }
+}
+
+test "get tag type" {
+    try expect(std.meta.Tag(ComplexType) == ComplexTypeTag);
+}
+
+test "modify tagged union in switch" {
+    var c3 = ComplexType{ .ok = 42 };
+    switch (c3) {
+        ComplexTypeTag.ok => |*value| value.* += 1,
+        ComplexTypeTag.not_ok => unreachable,
+    }
+    try expect(c3.ok == 43);
+}
