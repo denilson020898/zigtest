@@ -1,8 +1,10 @@
 const std = @import("std");
 const eq = std.testing.expectEqual;
+const ee = std.testing.expectError;
 const expect = std.testing.expect;
 const native_endian = @import("builtin").target.cpu.arch.endian();
 const mem = std.mem;
+const builtin = @import("builtin");
 
 const Point = struct {
     x: f32,
@@ -491,4 +493,348 @@ test "modify tagged union in switch" {
         ComplexTypeTag.not_ok => unreachable,
     }
     try expect(c3.ok == 43);
+}
+
+const Variant = union(enum) {
+    int: i32,
+    boolean: bool,
+
+    none,
+
+    fn truthy(self: Variant) bool {
+        return switch (self) {
+            Variant.int => |x_int| x_int != 0,
+            Variant.boolean => |x_bool| x_bool,
+            Variant.none => false,
+        };
+    }
+};
+
+test "union method" {
+    var v1 = Variant{ .int = 1 };
+    var v2 = Variant{ .boolean = false };
+    try expect(v1.truthy());
+    try expect(!v2.truthy());
+}
+
+const Small2 = union(enum) {
+    a: i32,
+    b: bool,
+    c: u8,
+};
+
+test "@tagName2" {
+    try expect(std.mem.eql(u8, @tagName(Small2.a), "a"));
+}
+
+const Number2 = union {
+    int: i32,
+    float: f64,
+};
+
+fn makeNumber() Number2 {
+    return .{ .float = 12.34 };
+}
+
+test "anon union literal syntax" {
+    const i: Number2 = .{ .int = 42 };
+    const f = makeNumber();
+    try eq(i.int, 42);
+    try eq(f.float, 12.34);
+}
+
+const Derp = opaque {};
+const Wat = opaque {};
+
+extern fn bar3(d: *Derp) void;
+fn foo3(w: *Wat) callconv(.C) void {
+    bar3(w);
+}
+
+test "call foo" {
+    // foo3(undefined);
+}
+
+test "accessing vars block" {
+    {
+        var x: i32 = 1;
+        _ = &x;
+        x += 1;
+    }
+    // x += 1;
+}
+
+test "labeled break from labeled block" {
+    var y: i32 = 123;
+    const x = blk: {
+        y += 1;
+        break :blk y;
+    };
+    try eq(x, 124);
+    try eq(y, 124);
+}
+
+const pi = 3.14;
+test "test var shadow block" {
+    // {
+    //     var p: i32 = 1233;
+    // }
+}
+
+test "test var separated block" {
+    {
+        const pi2 = 3.14;
+        _ = &pi2;
+    }
+
+    {
+        const pi2 = true;
+        _ = &pi2;
+    }
+}
+
+test "empty block" {
+    const a = {};
+    const b = void{};
+    try eq(@TypeOf(a), void);
+    try eq(@TypeOf(b), void);
+    try eq(a, b);
+}
+
+test "switch simple" {
+    const a: u64 = 10;
+    const zz: u64 = 103;
+
+    const b = switch (a) {
+        1, 2, 3 => 0,
+        5...100 => 1,
+        101 => blk: {
+            const c2: u64 = 5;
+            break :blk c2 * 2 + 1;
+        },
+
+        zz => zz,
+        blk: {
+            const d: u32 = 5;
+            const e: u32 = 100;
+            break :blk d + e;
+        } => 107,
+        else => 9,
+    };
+
+    try eq(b, 1);
+}
+
+const os_msg = switch (builtin.target.os.tag) {
+    .linux => "we found a linux user",
+    else => "bingbong",
+};
+
+test "switch inside function" {
+    switch (builtin.target.os.tag) {
+        .fuchsia => {
+            @compileError("bruh, not supported lah");
+        },
+        else => {},
+    }
+}
+
+test "switch on tagged union2" {
+    const Point4 = struct {
+        x: u8,
+        y: u8,
+    };
+
+    const Item4 = union(enum) {
+        a: u32,
+        c: Point4,
+        d,
+        e: u32,
+    };
+
+    var a = Item4{ .c = Point4{ .x = 1, .y = 2 } };
+    const b = switch (a) {
+        Item4.a, Item4.e => |item| item,
+        Item4.c => |*item| blk: {
+            item.*.x += 1;
+            break :blk 6;
+        },
+        Item4.d => 8,
+    };
+
+    try eq(b, 6);
+
+    try eq(a.c.x, 2);
+}
+
+const Color2 = enum { auto, off, on };
+
+test "exhaustive switching" {
+    const color = Color2.off;
+    const result = switch (color) {
+        Color2.auto => true,
+        Color2.on => true,
+        Color2.off => false,
+    };
+
+    try eq(result, false);
+}
+
+fn isFieldOptional(comptime T: type, field_index: usize) !bool {
+    const fields = @typeInfo(T).Struct.fields;
+    return switch (field_index) {
+        inline 0, 1 => |idx| @typeInfo(fields[idx].type) == .Optional,
+        else => return error.IndexOutOfBounds,
+    };
+}
+
+const Struct1 = struct { a: u32, b: ?u32 };
+
+test "using @typeInfo with rt vals" {
+    var index: usize = 0;
+    try expect(!try isFieldOptional(Struct1, index));
+    index += 1;
+    try expect(try isFieldOptional(Struct1, index));
+    index += 1;
+    try ee(error.IndexOutOfBounds, isFieldOptional(Struct1, index));
+}
+
+test "while basic" {
+    var i: usize = 0;
+    while (i < 10) {
+        i += 1;
+    }
+    try eq(i, 10);
+}
+
+test "while break basic" {
+    var i: usize = 0;
+    while (true) {
+        if (i == 10) {
+            break;
+        }
+        i += 1;
+    }
+    try eq(i, 10);
+}
+
+test "while continue basic" {
+    var i: usize = 0;
+    while (true) {
+        i += 1;
+        if (i < 10) {
+            continue;
+        }
+        break;
+    }
+    try eq(i, 10);
+}
+
+test "while loop continue expr" {
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {}
+    try eq(i, 10);
+}
+
+test "while loop continue expr, complex" {
+    var i: usize = 1;
+    var j: usize = 1;
+
+    while (i * j < 2000) : ({
+        i *= 2;
+        j *= 3;
+    }) {
+        const my_ij = i * j;
+        try expect(my_ij < 2000);
+    }
+}
+
+test "while else" {
+    try expect(rangeHasNumber(0, 10, 5));
+    try expect(!rangeHasNumber(0, 10, 15));
+}
+
+fn rangeHasNumber(begin: usize, end: usize, number: usize) bool {
+    var i = begin;
+    return while (i < end) : (i += 1) {
+        if (i == number) {
+            break true;
+        }
+    } else false;
+}
+
+test "nested break" {
+    outer: while (true) {
+        while (true) {
+            break :outer;
+        }
+    }
+}
+
+test "nested continue" {
+    var i: usize = 0;
+    outer: while (i < 10) : (i += 1) {
+        while (true) {
+            continue :outer;
+        }
+    }
+}
+
+var numbers_left: u32 = undefined;
+fn eventuallyNullSequence() ?u32 {
+    return if (numbers_left == 0) null else blk: {
+        numbers_left -= 1;
+        break :blk numbers_left;
+    };
+}
+
+test "while null capture" {
+    var sum1: u32 = 0;
+    numbers_left = 3;
+
+    while (eventuallyNullSequence()) |value| {
+        sum1 += value;
+    }
+
+    try eq(sum1, 3);
+
+    var sum2: u32 = 0;
+    numbers_left = 3;
+
+    while (eventuallyNullSequence()) |value| {
+        sum2 += value;
+    } else {
+        try eq(sum2, 3);
+    }
+
+    var i: u32 = 0;
+    var sum3: u32 = 0;
+    numbers_left = 3;
+
+    while (eventuallyNullSequence()) |value| : (i += 1) {
+        sum3 += value;
+    }
+    try expect(i == 3);
+}
+
+var numbers_left2: u32 = undefined;
+fn eventuallyErrorSequence() anyerror!u32 {
+    return if (numbers_left2 == 0) error.ReachedZero else blk: {
+        numbers_left2 -= 1;
+        break :blk numbers_left2;
+    };
+}
+
+test "while error union capture" {
+    var sum1: u32 = 0;
+    numbers_left2 = 3;
+    while (eventuallyErrorSequence()) |value| {
+        sum1 += value;
+    } else |err| {
+        try eq(err, error.ReachedZero);
+    }
+}
+
+test "inline while loop" {
+    comptime var i = 0;
 }
