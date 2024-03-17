@@ -4,6 +4,7 @@ const ee = std.testing.expectError;
 const expect = std.testing.expect;
 const native_endian = @import("builtin").target.cpu.arch.endian();
 const mem = std.mem;
+const print = std.debug.print;
 const builtin = @import("builtin");
 
 const Point = struct {
@@ -969,4 +970,162 @@ test "if expr" {
 
     const result = if (a != b) 47 else 3333;
     try expect(result == 47);
+}
+
+test "if boolean" {
+    const a: u32 = 5;
+    const b: u32 = 4;
+    if (a != b) {
+        try expect(true);
+    } else if (a == 9) {
+        unreachable;
+    } else {
+        unreachable;
+    }
+}
+
+test "if error union" {
+    const a: anyerror!u32 = 0;
+    if (a) |value| {
+        try expect(value == 0);
+    } else |err| {
+        _ = err;
+        unreachable;
+    }
+    const b: anyerror!u32 = error.BadValue;
+    if (b) |value| {
+        _ = value;
+        unreachable;
+    } else |err| {
+        try expect(err == error.BadValue);
+    }
+
+    if (a) |value| {
+        try expect(value == 0);
+    } else |_| {}
+
+    if (b) |_| {} else |err| {
+        try expect(err == error.BadValue);
+    }
+
+    var cr2: anyerror!u32 = 3;
+    if (cr2) |*value| {
+        value.* = 9;
+    } else |_| {
+        unreachable;
+    }
+
+    if (cr2) |value| {
+        try expect(value == 9);
+    } else |_| {
+        unreachable;
+    }
+}
+
+test "if optional" {
+    const a: ?u32 = 0;
+    if (a) |value| {
+        try expect(value == 0);
+    } else {
+        unreachable;
+    }
+
+    const b: ?u32 = null;
+    if (b) |_| {
+        unreachable;
+    } else {
+        try expect(true);
+    }
+
+    if (a) |value| {
+        try expect(value == 0);
+    }
+
+    if (b == null) {
+        try expect(true);
+    }
+
+    var c2: ?u32 = 3;
+    if (c2) |*value| {
+        value.* = 2;
+    }
+
+    if (c2) |value| {
+        try expect(value == 2);
+    } else {
+        unreachable;
+    }
+}
+
+test "if error union with optional" {
+    const a: anyerror!?u32 = 0;
+    if (a) |optional_value| {
+        try expect(optional_value.? == 0);
+    } else |err| {
+        _ = err;
+        unreachable;
+    }
+
+    const b: anyerror!?u32 = null;
+    if (b) |optional_value| {
+        try expect(optional_value == null);
+    } else |_| {
+        unreachable;
+    }
+
+    const c2: anyerror!?u32 = error.BadValue;
+    if (c2) |optional_value| {
+        _ = optional_value;
+        unreachable;
+    } else |err| {
+        try expect(err == error.BadValue);
+    }
+
+    var d: anyerror!?u32 = 3;
+    if (d) |*optional_value| {
+        if (optional_value.*) |*value| {
+            value.* = 10;
+        }
+    } else |_| {
+        unreachable;
+    }
+
+    if (d) |optional_value| {
+        try expect(optional_value.? == 10);
+    } else |_| {
+        unreachable;
+    }
+}
+
+fn deferExample() !usize {
+    var a: usize = 1;
+    {
+        defer a = 2;
+        a = 1;
+    }
+    try eq(a, 2);
+    a = 5;
+    return a;
+}
+
+test "defer basics" {
+    try eq((try deferExample()), 5);
+}
+
+test "defer unwinded" {
+    std.debug.print("\n", .{});
+
+    defer {
+        std.debug.print("1 ", .{});
+    }
+
+    defer {
+        std.debug.print("2 ", .{});
+    }
+
+    if (false) {
+        defer {
+            std.debug.print("3 ", .{});
+        }
+    }
 }
